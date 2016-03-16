@@ -29,6 +29,8 @@ ADD ceph.defaults /
 ADD ./confd/templates/* /etc/confd/templates/
 ADD ./confd/conf.d/* /etc/confd/conf.d/
 
+ADD check_zombie_mons.py /check_zombie_mons.py
+
 # Add volumes for Ceph config and data
 VOLUME ["/etc/ceph","/var/lib/ceph"]
 

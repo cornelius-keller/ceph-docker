@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e
 
-/remove-mon.sh || true
-
 : ${CLUSTER:=ceph}
 : ${CEPH_CLUSTER_NETWORK:=${CEPH_PUBLIC_NETWORK}}
 : ${CEPH_DAEMON:=${1}} # default daemon to first argument
@@ -50,6 +48,7 @@ if [[ ! -e /etc/ceph/${CLUSTER}.client.admin.keyring ]]; then
     exit 1
 fi
 }
+
 
 # create socket directory
 function create_socket_dir {
@@ -114,7 +113,6 @@ function populate_kv {
 #######
 
 function start_mon {
-
   if [ ${MON_IP_AUTO_DETECT} -eq 1 ]; then
     MON_IP=$(ip -6 -o a | grep scope.global | awk '/eth/ { sub ("/..", "", $4); print $4 }' | head -n1)
     if [ -z "$MON_IP" ]; then
@@ -163,8 +161,7 @@ function start_mon {
     create_socket_dir
 
     # Prepare the monitor daemon's directory with the map and keyring
-    ceph-mon --setuser ceph --setgroup ceph --mkfs -i ${MON_NAME} --monmap /etc/ceph/monmap --keyring /tmp/${CLUSTER}.mon.keyring --mon-data /var/lib/ceph/mon/${CLUSTER}-${MON_NAME}
-
+    ceph-mon --setuser ceph --setgroup ceph --mkfs -i ${MON_NAME} --monmap /etc/ceph/monmap --keyring /tmp/${CLUSTER}.mon.keyring  --mon-data /var/lib/ceph/mon/${CLUSTER}-${MON_NAME}
     # Clean up the temporary key
     rm /tmp/${CLUSTER}.mon.keyring
   fi
@@ -500,6 +497,24 @@ ENDHERE
 
 }
 
+####################
+# WATCH MON HEALTH #
+###################
+
+function watch_mon_health {
+echo "checking for zombie mons"
+
+while [ true ]
+do
+ echo "checking for zombie mons"
+ /check_zombie_mons.py || true;
+ echo "sleep 30 sec"
+ sleep 30
+done
+
+
+}
+
 ###############
 # CEPH_DAEMON #
 ###############
@@ -539,6 +554,9 @@ case "$CEPH_DAEMON" in
       ;;
    restapi)
       start_restapi
+      ;;
+   mon_health)
+      watch_mon_health
       ;;
    *)
       if [ ! -n "$CEPH_DAEMON" ]; then
