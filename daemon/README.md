@@ -59,10 +59,6 @@ Populate Key Value store
 
 ```
 $ sudo docker run -d --net=host \
--v /etc/ceph:/etc/ceph \
--v /var/lib/ceph/:/var/lib/ceph/ \
--e MON_IP=192.168.0.20 \
--e CEPH_PUBLIC_NETWORK=192.168.0.0/24 \
 -e KV_TYPE=etcd \
 -e KV_IP=127.0.0.1 \
 -e KV_PORT=4001 \
@@ -71,6 +67,16 @@ ceph/daemon populate_kvstore
 
 Deploy a monitor
 ----------------
+
+A monitor requires some persistent storage for the docker container.  If a KV
+store is used, `/etc/ceph` will be auto-generated from data kept in the KV
+store.  `/var/lib/ceph`, however, *must* be provided by a docker volume.
+The ceph mon will periodically store data into `/var/lib/ceph`, including the
+latest copy of the CRUSH map.  If a mon restarts, it will attempt to download
+the latest monmap and CRUSH map from other peer monitors.  However, if all
+mon daemons have gone down, monitors must be able to recover their previous
+maps.  The docker volume used for `/var/lib/ceph` should be backed by some
+durable storage, and must be able to survive container and node restarts.
 
 Without KV store, run:
 
@@ -87,7 +93,7 @@ With KV store, run:
 
 ```
 $ sudo docker run -d --net=host \
--v /var/lib/ceph/:/var/lib/ceph/ \
+-v /var/lib/ceph:/var/lib/ceph \
 -e MON_IP=192.168.0.20 \
 -e CEPH_PUBLIC_NETWORK=192.168.0.0/24 \
 -e KV_TYPE=etcd \
@@ -101,7 +107,7 @@ List of available options:
 * `CEPH_PUBLIC_NETWORK`: CIDR of the host running Docker, it should be in the same network as the `MON_IP`
 * `CEPH_CLUSTER_NETWORK`: CIDR of a secondary interface of the host running Docker. Used for the OSD replication traffic
 * `MON_IP`: IP address of the host running Docker
-* `MON_IP_AUTO_DETECT`: Whether and how to attempt IP autodetection.
+* `NETWORK_AUTO_DETECT`: Whether and how to attempt IP and network autodetection. Meant to be used without `--net=host`.
     *  0 = Do not detect (default)
     *  1 = Detect IPv6, fallback to IPv4 (if no globally-routable IPv6 address detected)
     *  4 = Detect IPv4 only
@@ -117,6 +123,7 @@ There are four available `OSD_TYPE` values:
 * `activate` - the daemon expects to be passed a block device of a `ceph-disk`-prepared disk (via the `OSD_DEVICE` environment variable); no bootstrapping will be performed
 * `directory` - the daemon expects to find the OSD filesystem(s) already mounted in `/var/lib/ceph/osd/`
 * `disk` - the daemon expects to be passed a block device via the `OSD_DEVICE` environment variable
+* `prepare` - the daemon expects to be passed a block device and run `ceph-disk` prepare to bootstra the disk (via the `OSD_DEVICE` environment variable)
 
 Options for OSDs (TODO: consolidate these options between the types):
 * `JOURNAL_DIR` - if provided, new OSDs will be bootstrapped to use the specified directory as a common journal area.  This is usually used to store the journals for more than one OSD on a common, separate disk.  This currently only applies to the `directory` OSD type.
@@ -149,7 +156,6 @@ With KV backend:
 $ sudo docker run -d --net=host \
 --privileged=true \
 --pid=host \
--v /var/lib/ceph/:/var/lib/ceph/ \
 -v /dev/:/dev/ \
 -e OSD_DEVICE=/dev/vdd \
 -e OSD_FORCE_ZAP=1 \
@@ -180,7 +186,6 @@ With KV backend:
 $ sudo docker run -d --net=host \
 --privileged=true \
 --pid=host \
--v /var/lib/ceph/:/var/lib/ceph/ \
 -v /dev/:/dev/ \
 -e OSD_DEVICE=/dev/vdd \
 -e OSD_TYPE=disk \
@@ -238,6 +243,10 @@ To create your OSDs simply run the following command:
 
 `docker exec <mon-container-id> ceph osd create`.
 
+Note that we now default to dropping root privileges, so it is important to set the proper ownership for your OSD directories.  The Ceph OSD runs as UID:64045, GID:64045, so:
+
+`chown -R 64045:64045 /var/lib/ceph/osd/*`
+
 
 #### Multiple OSDs ####
 
@@ -292,11 +301,10 @@ $ sudo docker run -d --net=host \
 ceph/daemon mds
 ```
 
-Without KV backend, run:
+With KV backend, run:
 
 ```
 $ sudo docker run -d --net=host \
--v /var/lib/ceph/:/var/lib/ceph/ \
 -e CEPHFS_CREATE=1 \
 -e KV_TYPE=etcd \
 -e KV_IP=192.168.0.20 \
@@ -331,7 +339,6 @@ With kv backend, run:
 
 ```
 $ sudo docker run -d --net=host \
--v /var/lib/ceph/:/var/lib/ceph/ \
 -e KV_TYPE=etcd \
 -e KV_IP=192.168.0.20 \
 ceph/daemon rgw
@@ -339,8 +346,14 @@ ceph/daemon rgw
 
 List of available options:
 
-* `RGW_CIVETWEB_PORT` is the port to which civetweb is listening on (DEFAULT: 80)
+* `RGW_CIVETWEB_PORT` is the port to which civetweb is listening on (DEFAULT: 8080)
 * `RGW_NAME`: default to hostname
+
+Administration via [radosgw-admin](http://docs.ceph.com/docs/infernalis/man/8/radosgw-admin/) from the Docker host if the `RGW_NAME` variable hasn't been supplied:
+
+`docker exec <containerId> radosgw-admin -n client.rgw.$(hostname) -k /var/lib/ceph/radosgw/$(hostname)/keyring <commands>`
+
+If otherwise, `$(hostname)`  has to be replaced by the value of `RGW_NAME`.
 
 To enable an external CGI interface instead of civetweb set:
 
@@ -349,7 +362,6 @@ To enable an external CGI interface instead of civetweb set:
 * `RGW_REMOTE_CGI_PORT=9000`
 
 And run the container like this `docker run -d -v /etc/ceph:/etc/ceph -v /var/lib/ceph/:/var/lib/ceph -e CEPH_DAEMON=RGW -e RGW_NAME=myrgw -p 9000:9000 -e RGW_REMOTE_CGI=1 -e RGW_REMOTE_CGI_HOST=192.168.0.1 -e RGW_REMOTE_CGI_PORT=9000 ceph/daemon`
-
 
 Deploy a REST API
 -----------------
