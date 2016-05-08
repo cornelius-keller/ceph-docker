@@ -13,7 +13,7 @@ RUN apt-get update && apt-get -y install runit patch sharutils && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Add bootstrap script
-ADD entrypoint.sh remove-mon.sh check_zombie_mons.py config.*.sh /
+ADD entrypoint.sh remove-mon.sh check_zombie_mons.py ceph-disk.patch config.*.sh /
 
 ADD my_init/my_init /sbin/my_init
 ADD 2.sh /etc/runit/2
