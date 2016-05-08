@@ -617,7 +617,7 @@ function start_mds {
   fi
 
   # NOTE: prefixing this with exec causes it to die (commit suicide)
-  /usr/bin/ceph-mds ${CEPH_OPTS} -d -i ${MDS_NAME} --setuser ceph --setgroup ceph
+  /usr/bin/ceph-mds ${CEPH_OPTS} -d -i ${MDS_NAME}
 }
 
 
