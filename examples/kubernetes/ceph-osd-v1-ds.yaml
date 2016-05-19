@@ -1,26 +1,29 @@
 ---
-kind: ReplicationController
-apiVersion: v1
+kind: DaemonSet
+apiVersion: extensions/v1beta1
 metadata:
+  name: ceph-osd
+  namespace: ceph
   labels:
     app: ceph
-    daemon: mds 
-  name: ceph-mds
-  namespace: ceph
+    daemon: osd
 spec:
-  replicas: 1
   template:
     metadata:
-      name: ceph-mds
-      namespace: ceph
       labels:
         app: ceph
-        daemon: mds
+        daemon: osd
     spec:
       nodeSelector:
         node-type: storage
-      serviceAccount: default
       volumes:
+        - name: devices
+          hostPath:
+            path: /dev
+        - name: ceph
+          emptyDir: {}
+#          hostPath:
+#            path: /opt/ceph
         - name: ceph-conf
           secret:
             secretName: ceph-conf-combined
@@ -33,22 +36,19 @@ spec:
         - name: ceph-bootstrap-rgw-keyring
           secret:
             secretName: ceph-bootstrap-rgw-keyring
+        - name: osd-directory
+          emptyDir: {}
+#          hostPath:
+#            path: /home/core/data/ceph/osd
       containers:
-        - name: ceph-mon
-          image: quay.io/cornelius/ceph-daemon:latest
-#         image: quay.io/acaleph/ceph-daemon:kubernetes
-          ports:
-            - containerPort: 6800
-          env:
-            - name: CEPH_DAEMON
-              value: MDS
-            - name: CEPHFS_CREATE
-              value: "1"
-            - name: KV_TYPE
-              value: k8s
-            - name: CLUSTER
-              value: ceph
+        - name: osd-pod
+          image: quay.io/cornelius/ceph-daemon
+#          imagePullPolicy: Always
           volumeMounts:
+            - name: devices
+              mountPath: /dev
+            - name: ceph
+              mountPath: /var/lib/ceph
             - name: ceph-conf
               mountPath: /etc/ceph
             - name: ceph-bootstrap-osd-keyring
@@ -57,6 +57,19 @@ spec:
               mountPath: /var/lib/ceph/bootstrap-mds
             - name: ceph-bootstrap-rgw-keyring
               mountPath: /var/lib/ceph/bootstrap-rgw
+            - name: osd-directory
+              mountPath: /var/lib/ceph/osd
+          securityContext:
+            privileged: true
+          env:
+            - name: CEPH_DAEMON
+              value: osd_directory
+            - name: KV_TYPE
+              value: k8s
+            - name: CLUSTER
+              value: ceph
+            - name: CEPH_GET_ADMIN_KEY
+              value: "1"
           livenessProbe:
               tcpSocket:
                 port: 6800

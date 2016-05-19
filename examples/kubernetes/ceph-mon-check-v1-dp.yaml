@@ -1,6 +1,6 @@
 ---
-kind: ReplicationController
-apiVersion: v1
+kind: Deployment
+apiVersion: extensions/v1beta1
 metadata:
   labels:
     app: ceph
@@ -9,9 +9,6 @@ metadata:
   namespace: ceph
 spec:
   replicas: 1
-  selector:
-    app: ceph
-    daemon: moncheck
   template:
     metadata:
       name: ceph-mon
@@ -45,9 +42,9 @@ spec:
             - name: CEPH_DAEMON
               value: MON_HEALTH
             - name: CEPH_PUBLIC_NETWORK
-              value: 10.1.0.0/16
+              value: 10.244.0.0/16
             - name: CEPH_CLUSTER_NETWORK
-              value: 10.1.0.0/16
+              value: 10.244.0.0/16
             - name: KV_TYPE
               value: k8s
             - name: MON_IP_AUTO_DETECT
